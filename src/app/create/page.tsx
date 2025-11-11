@@ -6,13 +6,13 @@ import { Transaction } from "@mysten/sui/transactions";
 import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 
 import { useNetworkVariable } from "@/app/networkConfig";
+import { showSuccessToast, showErrorToast } from "@/lib/toast";
 
 type FormState = {
   name: string;
   target: string;
   desc: string;
   token: string;
-  imageRef: string;
 };
 
 const initialFormState: FormState = {
@@ -20,7 +20,6 @@ const initialFormState: FormState = {
   target: "",
   desc: "",
   token: "SUI",
-  imageRef: "",
 };
 
 const COIN_TYPE_MAP: Record<string, string> = {
@@ -28,7 +27,7 @@ const COIN_TYPE_MAP: Record<string, string> = {
 };
 
 const MIST_PER_SUI = BigInt(1_000_000_000);
-const MAX_TARGET_SUI = BigInt(100);
+const MAX_TARGET_SUI = BigInt(1000000);
 const MAX_TARGET_MIST = MIST_PER_SUI * MAX_TARGET_SUI;
 
 function parseSuiAmount(value: string): {
@@ -70,8 +69,8 @@ function parseSuiAmount(value: string): {
 export default function CreateEvent() {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(initialFormState);
-  const [message, setMessage] = useState<string>("");
-  const [isError, setIsError] = useState<boolean>(false);
+  const [image, setImage] = useState<File>();
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const crowdfundingPackageId = useNetworkVariable("crowdfundingPackageId");
   const suiClient = useSuiClient();
@@ -87,33 +86,86 @@ export default function CreateEvent() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImagePreview(null);
+      return;
+    }
+
+    // Check file size (5MB limit)
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+    if (file.size > maxSize) {
+      showErrorToast("Image size must be less than 5MB.");
+      event.target.value = ""; // Reset input
+      return;
+    }
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    setImage(file);
+  };
+
   const resetForm = () => {
     setForm(initialFormState);
+    setImagePreview(null);
+  };
+
+  const uploadImageToIPFS = async () => {
+    try {
+      if (!image) {
+        showErrorToast("No file selected");
+        return null;
+      }
+
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).substring(2, 15);
+      const fileExtension = image.name.split(".").pop();
+      const uniqueFilename = `event-${timestamp}-${randomString}.${fileExtension}`;
+
+      const renamedFile = new File([image], uniqueFilename, {
+        type: image.type,
+      });
+
+      const data = new FormData();
+      data.set("image", renamedFile);
+
+      const uploadRequest = await fetch("/api/files", {
+        method: "POST",
+        body: data,
+      });
+      const signedUrl = await uploadRequest.json();
+      return signedUrl;
+    } catch (e) {
+      console.log(e);
+      showErrorToast("Trouble uploading file to IPFS");
+      return null;
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setMessage("");
-    setIsError(false);
 
     if (!form.name.trim() || !form.target.trim() || !form.desc.trim()) {
-      setMessage("⚠️ Please fill in all required fields.");
-      setIsError(true);
+      showErrorToast("Please fill in all required fields.");
       return;
     }
 
     if (!crowdfundingPackageId) {
-      setMessage(
-        "⚠️ Crowdfunding package ID is not configured for this network.",
+      showErrorToast(
+        "Crowdfunding package ID is not configured for this network.",
       );
-      setIsError(true);
       return;
     }
 
     const coinType = COIN_TYPE_MAP[form.token];
     if (!coinType) {
-      setMessage("⚠️ Selected token is not supported yet.");
-      setIsError(true);
+      showErrorToast("Selected token is not supported yet.");
       return;
     }
 
@@ -122,22 +174,25 @@ export default function CreateEvent() {
     );
 
     if (targetAmount === null) {
-      setMessage(`⚠️ ${amountError ?? "Invalid target fund amount."}`);
-      setIsError(true);
+      showErrorToast(amountError ?? "Invalid target fund amount.");
       return;
     }
 
     if (targetAmount <= BigInt(0)) {
-      setMessage("⚠️ Target fund must be greater than zero.");
-      setIsError(true);
+      showErrorToast("Target fund must be greater than zero.");
       return;
     }
 
     if (targetAmount > MAX_TARGET_MIST) {
-      setMessage(
-        `⚠️ Target fund cannot exceed ${MAX_TARGET_SUI.toString()} SUI.`,
+      showErrorToast(
+        `Target fund cannot exceed ${MAX_TARGET_SUI.toString()} SUI.`,
       );
-      setIsError(true);
+      return;
+    }
+
+    const uploadedUrl = await uploadImageToIPFS();
+    if (!uploadedUrl) {
+      showErrorToast("Failed to upload image. Please try again.");
       return;
     }
 
@@ -148,7 +203,7 @@ export default function CreateEvent() {
       arguments: [
         tx.pure.string(form.name.trim()),
         tx.pure.string(form.desc.trim()),
-        tx.pure.string(form.imageRef.trim()),
+        tx.pure.string(uploadedUrl),
         tx.pure.u64(targetAmount),
       ],
     });
@@ -164,14 +219,12 @@ export default function CreateEvent() {
         },
       });
 
-      setMessage(`✅ Event "${form.name}" created successfully!`);
-      setIsError(false);
-      router.push("/explore");
+      showSuccessToast(`Event "${form.name}" created successfully!`);
       resetForm();
+      router.push("/explore");
     } catch (error) {
       console.error("Failed to create event", error);
-      setMessage("⚠️ Failed to create event. Please try again.");
-      setIsError(true);
+      showErrorToast("Failed to create event. Please try again.");
     }
   };
 
@@ -183,7 +236,7 @@ export default function CreateEvent() {
   }, [isPending]);
 
   return (
-    <section className="min-h-screen bg-black text-white px-6 md:px-20 py-10 relative overflow-hidden">
+    <section className="min-h-screen bg-black text-white px-6 md:px-20 py-28 lg:py-24 relative overflow-hidden">
       <button
         onClick={() => router.back()}
         className="text-gray-400 hover:text-white mb-6 flex items-center space-x-2"
@@ -199,7 +252,7 @@ export default function CreateEvent() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-gray-300 mb-1">Name Event :</label>
+              <label className="block text-gray-300 mb-1">Event Name</label>
               <input
                 type="text"
                 name="name"
@@ -211,16 +264,16 @@ export default function CreateEvent() {
             </div>
 
             <div>
-              <label className="block text-gray-300 mb-1">Target Fund :</label>
+              <label className="block text-gray-300 mb-1">Target Fund</label>
               <input
                 type="number"
                 name="target"
                 value={form.target}
                 onChange={handleChange}
                 className="w-full bg-gray-800 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter target fund amount (in SUI, max 100)..."
+                placeholder="Enter target fund amount (in SUI, max 1,000,000)..."
                 min="0"
-                max="100"
+                max="1000000"
                 step="0.000000001"
                 inputMode="decimal"
               />
@@ -228,7 +281,7 @@ export default function CreateEvent() {
 
             <div>
               <label className="block text-gray-300 mb-1">
-                Deskripsi Event :
+                Event Description
               </label>
               <textarea
                 name="desc"
@@ -241,23 +294,37 @@ export default function CreateEvent() {
             </div>
 
             <div>
-              <label className="block text-gray-300 mb-1">
-                Event Image Reference (URL or CID):
-              </label>
-              <input
-                type="text"
-                name="imageRef"
-                value={form.imageRef}
-                onChange={handleChange}
-                className="w-full bg-gray-800 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="https://..."
-              />
+              <label className="block text-gray-300 mb-1">Event Image</label>
+              <div className="space-y-3">
+                {imagePreview && (
+                  <div className="relative w-auto h-64 bg-gray-800 rounded-md overflow-hidden">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                <label className="block">
+                  <span className="sr-only">Choose image file</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="block text-sm text-gray-400
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-medium
+                      file:bg-blue-600 file:text-white
+                      hover:file:bg-blue-700
+                      file:cursor-pointer cursor-pointer"
+                  />
+                </label>
+              </div>
             </div>
 
             <div>
-              <label className="block text-gray-300 mb-1">
-                Select Token to use :
-              </label>
+              <label className="block text-gray-300 mb-1">Token</label>
               <select
                 name="token"
                 value={form.token}
@@ -275,16 +342,6 @@ export default function CreateEvent() {
             >
               {submitLabel}
             </button>
-
-            {message && (
-              <p
-                className={`text-sm pt-2 ${
-                  isError ? "text-yellow-400" : "text-green-400"
-                }`}
-              >
-                {message}
-              </p>
-            )}
           </form>
         </div>
       </div>

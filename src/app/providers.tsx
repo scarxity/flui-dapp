@@ -5,7 +5,6 @@ import {
   QueryClientProvider,
   QueryOptions,
 } from "@tanstack/react-query";
-import { Toaster } from "react-hot-toast";
 import { SuiClientProvider, WalletProvider } from "@mysten/dapp-kit";
 import { networkConfig } from "./networkConfig";
 
@@ -27,10 +26,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
-        <WalletProvider autoConnect>
-          <Toaster position="top-center" />
-          {children}
-        </WalletProvider>
+        <WalletProvider autoConnect>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
   );
