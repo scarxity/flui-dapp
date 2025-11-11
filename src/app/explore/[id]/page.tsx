@@ -313,7 +313,7 @@ export default function EventDetail({ params }: { params: { id: string } }) {
               src={event.image_ref || "/images/shape.png"}
               alt={event.name}
               fill
-              className="rounded-xl object-cover lg:object-contain"
+              className="rounded-xl object-cover"
               unoptimized
             />
           </div>
