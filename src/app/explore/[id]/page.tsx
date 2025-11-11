@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useState, useMemo } from "react";
+import ConfirmModal from "@/components/ConfirmModal";
 import { Transaction } from "@mysten/sui/transactions";
 import {
   useSignAndExecuteTransaction,
@@ -66,6 +67,8 @@ export default function EventDetail({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState("");
   const [hasWithdrawn, setHasWithdrawn] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
   const crowdfundingPackageId = useNetworkVariable("crowdfundingPackageId");
   const client = useSuiClient();
@@ -193,10 +196,9 @@ export default function EventDetail({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleClose = async () => {
-    if (!confirm("Are you sure you want to close this campaign?")) {
-      return;
-    }
+  // executeClose runs the transaction to close the campaign (opened by modal)
+  const executeClose = async () => {
+    setShowCloseModal(false);
 
     if (!crowdfundingPackageId) {
       showErrorToast("Package ID not configured.");
@@ -234,10 +236,9 @@ export default function EventDetail({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!confirm("Are you sure you want to withdraw all funds?")) {
-      return;
-    }
+  // executeWithdraw runs the withdraw transaction (opened by modal)
+  const executeWithdraw = async () => {
+    setShowWithdrawModal(false);
 
     if (!crowdfundingPackageId) {
       showErrorToast("Package ID not configured.");
@@ -309,10 +310,10 @@ export default function EventDetail({ params }: { params: { id: string } }) {
         <div className="w-full lg:w-1/2">
           <div className="relative w-full h-[250px] sm:h-[350px] lg:h-[400px]">
             <Image
-              src={event.image_ref || "/images/donation.jpg"}
+              src={event.image_ref || "/images/shape.png"}
               alt={event.name}
               fill
-              className="rounded-xl object-cover"
+              className="rounded-xl object-cover lg:object-contain"
               unoptimized
             />
           </div>
@@ -375,14 +376,14 @@ export default function EventDetail({ params }: { params: { id: string } }) {
               </h3>
               <div className="flex flex-col sm:flex-row gap-3 w-full">
                 <button
-                  onClick={handleClose}
+                  onClick={() => setShowCloseModal(true)}
                   disabled={!event.isOpen || isPending}
                   className="w-full sm:w-auto px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isPending ? "Processing..." : "Close Campaign"}
                 </button>
                 <button
-                  onClick={handleWithdraw}
+                  onClick={() => setShowWithdrawModal(true)}
                   disabled={event.isOpen || isPending || hasWithdrawn}
                   className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -445,6 +446,29 @@ export default function EventDetail({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
+
+      {/* Confirmation modals */}
+      <ConfirmModal
+        isOpen={showCloseModal}
+        title="Close Campaign"
+        description="Are you sure you want to close this campaign? Closing will prevent further donations."
+        confirmText="Close"
+        cancelText="Cancel"
+        onConfirm={executeClose}
+        onCancel={() => setShowCloseModal(false)}
+        loading={isPending}
+      />
+
+      <ConfirmModal
+        isOpen={showWithdrawModal}
+        title="Withdraw Funds"
+        description="Withdraw all funds from this campaign to your account. This action cannot be undone."
+        confirmText="Withdraw"
+        cancelText="Cancel"
+        onConfirm={executeWithdraw}
+        onCancel={() => setShowWithdrawModal(false)}
+        loading={isPending}
+      />
     </section>
   );
 }
