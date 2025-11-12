@@ -1,21 +1,22 @@
 import { Metadata } from "next";
-
 import NextImage from "@/components/NextImage";
+import BackButton from "@/components/BackButton";
 
 export const metadata: Metadata = {
-  title: "404",
+  title: "404 - Not Found",
 };
 
 export default function NotFound() {
   return (
-    <main className="flex min-h-screen w-screen items-center justify-center bg-slate-200">
-      <NextImage
-        src="/NotFound.png"
-        alt="404"
-        width={1920}
-        height={1080}
-        className="w-2/3 xl:w-1/2"
-      />
+    <main className="min-h-screen w-screen bg-black text-white flex items-center justify-center px-6">
+      <div className="max-w-3xl w-full text-center">
+        <h1 className="text-6xl md:text-8xl font-bold mb-4">404</h1>
+        <p className="text-xl text-gray-300 mb-6">Page not found</p>
+
+        <div className="flex justify-center">
+          <BackButton />
+        </div>
+      </div>
     </main>
   );
 }

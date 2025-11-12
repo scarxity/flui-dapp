@@ -10,9 +10,12 @@ import {
   useSuiClient,
   useCurrentAccount,
 } from "@mysten/dapp-kit";
+import { useQueryClient } from "@tanstack/react-query";
 import { suiClient } from "@/lib/suiClient";
 import { useNetworkVariable } from "@/app/networkConfig";
 import { showSuccessToast, showErrorToast } from "@/lib/toast";
+import Loading from "@/app/loading";
+import NotFound from "@/app/not-found";
 
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
@@ -75,6 +78,7 @@ export default function EventDetail({ params }: { params: { id: string } }) {
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecute, isPending } =
     useSignAndExecuteTransaction();
+  const queryClient = useQueryClient();
 
   const isOwner = useMemo(() => {
     if (!currentAccount || !event) return false;
@@ -182,6 +186,13 @@ export default function EventDetail({ params }: { params: { id: string } }) {
       showSuccessToast(`Successfully donated ${amount} SUI to ${event.name}!`);
       setAmount("");
 
+      // Invalidate balance cache so Navbar updates
+      if (currentAccount?.address) {
+        queryClient.invalidateQueries({
+          queryKey: ["balance", currentAccount.address],
+        });
+      }
+
       // Refresh event data
       const updatedEvent = await suiClient.getObject({
         id,
@@ -221,6 +232,13 @@ export default function EventDetail({ params }: { params: { id: string } }) {
       });
 
       showSuccessToast("Campaign closed successfully!");
+
+      // Invalidate balance cache so Navbar updates
+      if (currentAccount?.address) {
+        queryClient.invalidateQueries({
+          queryKey: ["balance", currentAccount.address],
+        });
+      }
 
       // Refresh event data
       const updatedEvent = await suiClient.getObject({
@@ -263,6 +281,13 @@ export default function EventDetail({ params }: { params: { id: string } }) {
       showSuccessToast("Funds withdrawn successfully!");
       setHasWithdrawn(true);
 
+      // Invalidate balance cache so Navbar updates
+      if (currentAccount?.address) {
+        queryClient.invalidateQueries({
+          queryKey: ["balance", currentAccount.address],
+        });
+      }
+
       // Refresh event data
       const updatedEvent = await suiClient.getObject({
         id,
@@ -278,197 +303,194 @@ export default function EventDetail({ params }: { params: { id: string } }) {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-white bg-black">
-        Loading event details...
-      </div>
-    );
+    return <Loading />;
   }
 
   if (!event) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-white bg-black">
-        Event not found.
-      </div>
-    );
+    return <NotFound />;
   }
 
   return (
     <section className="min-h-screen bg-black text-white px-4 sm:px-6 md:px-20 py-24">
-      {/* Back button */}
-      <button
-        onClick={() => router.back()}
-        className="text-gray-400 hover:text-white mb-6 flex items-center space-x-2"
-      >
-        <span className="text-xl">←</span>
-        <span>Back</span>
-      </button>
+      <div className="max-w-7xl mx-auto">
+        {/* Back button */}
+        <button
+          onClick={() => router.back()}
+          className="text-gray-400 hover:text-white mb-6 flex items-center space-x-2"
+        >
+          <span className="text-xl">←</span>
+          <span>Back</span>
+        </button>
 
-      {/* Layout utama */}
-      <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-10 max-w-full">
-        {/* Gambar kiri */}
-        <div className="w-full lg:w-1/2">
-          <div className="relative w-full h-[250px] sm:h-[350px] lg:h-[400px]">
-            <Image
-              src={event.image_ref || "/images/shape.png"}
-              alt={event.name}
-              fill
-              className="rounded-xl object-cover"
-              unoptimized
-            />
-          </div>
-        </div>
-
-        {/* Konten kanan */}
-        <div className="flex-1 space-y-6 w-full lg:w-auto">
-          <div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-2 break-words">
-              {event.name}
-            </h1>
-            <p className="text-gray-400 text-base sm:text-lg break-all">
-              By {event.owner.slice(0, 6)}...{event.owner.slice(-4)}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Status:{" "}
-              <span
-                className={event.isOpen ? "text-green-400" : "text-red-400"}
-              >
-                {event.isOpen ? "Open" : "Closed"}
-              </span>
-            </p>
-          </div>
-
-          {/* Progress Bar */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <p className="text-gray-300 text-sm">Progress</p>
-              <p className="text-sm text-gray-400">
-                {formatSuiAmount(event.current_amount)} /{" "}
-                {formatSuiAmount(event.target_amount)} SUI
-              </p>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-5">
-              <div
-                className="bg-gradient-to-r from-sky-500 to-indigo-600 h-5 rounded-full transition-all"
-                style={{ width: `${progress}%` }}
-              ></div>
-            </div>
-            <p className="text-gray-400 text-sm mt-1">
-              {progress.toFixed(1)}% funded
-            </p>
-          </div>
-
-          {/* Deskripsi */}
-          <div>
-            <h2 className="text-xl sm:text-2xl font-semibold mb-2">
-              Event Description
-            </h2>
-            <p className="text-gray-400 leading-relaxed break-words">
-              {event.description}
-            </p>
-          </div>
-
-          {/* Owner Controls */}
-          {isOwner && (
-            <div className="pt-4 border-t border-gray-800 space-y-4">
-              <h3 className="text-lg sm:text-xl font-semibold text-yellow-400">
-                Campaign Owner Controls
-              </h3>
-              <div className="flex flex-col sm:flex-row gap-3 w-full">
-                <button
-                  onClick={() => setShowCloseModal(true)}
-                  disabled={!event.isOpen || isPending}
-                  className="w-full sm:w-auto px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending ? "Processing..." : "Close Campaign"}
-                </button>
-                <button
-                  onClick={() => setShowWithdrawModal(true)}
-                  disabled={event.isOpen || isPending || hasWithdrawn}
-                  className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending
-                    ? "Processing..."
-                    : hasWithdrawn
-                      ? "Already Withdrawn"
-                      : "Withdraw Funds"}
-                </button>
-              </div>
-              <p className="text-sm text-gray-400">
-                {hasWithdrawn
-                  ? "✅ Funds have already been withdrawn from this campaign."
-                  : event.isOpen
-                    ? "Close the campaign first to enable withdrawals."
-                    : "Campaign is closed. You can now withdraw funds."}
-              </p>
-            </div>
-          )}
-
-          {/* Form Donasi */}
-          <div className="pt-4 space-y-4 w-full">
-            <h3 className="text-lg sm:text-xl font-semibold">
-              Contribute to this project
-            </h3>
-
-            {/* Jumlah Donasi */}
-            <div>
-              <label className="block text-gray-300 text-sm mb-1">
-                Amount (SUI)
-              </label>
-              <input
-                type="number"
-                placeholder="Enter amount in SUI..."
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                min="0"
-                step="0.000000001"
-                disabled={!event.isOpen || isPending}
-                className="bg-gray-800 border border-gray-700 text-gray-200 px-3 py-2 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        {/* Layout utama */}
+        <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-10 max-w-full">
+          {/* Gambar kiri */}
+          <div className="w-full lg:w-1/2">
+            <div className="relative w-full h-[250px] sm:h-[350px] lg:h-[400px]">
+              <Image
+                src={event.image_ref || "/images/shape.png"}
+                alt={event.name}
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="rounded-xl object-cover"
+                priority
               />
             </div>
+          </div>
 
-            {/* Tombol Contribute */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
-              <button
-                onClick={handleContribute}
-                disabled={!event.isOpen || isPending}
-                className="w-full sm:w-auto px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-md font-medium transition-all shadow-md shadow-sky-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isPending ? "Processing..." : "Contribute"}
-              </button>
-              <button
-                onClick={() => router.back()}
-                className="w-full sm:w-auto px-6 py-2 border border-gray-600 hover:border-blue-500 rounded-md font-medium transition-all text-gray-300 hover:text-blue-400"
-              >
-                Back
-              </button>
+          {/* Konten kanan */}
+          <div className="flex-1 space-y-6 w-full lg:w-auto">
+            <div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-2 break-words">
+                {event.name}
+              </h1>
+              <p className="text-gray-400 text-base sm:text-lg break-all">
+                By {event.owner.slice(0, 6)}...{event.owner.slice(-4)}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Status:{" "}
+                <span
+                  className={event.isOpen ? "text-green-400" : "text-red-400"}
+                >
+                  {event.isOpen ? "Open" : "Closed"}
+                </span>
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-gray-300 text-sm">Progress</p>
+                <p className="text-sm text-gray-400">
+                  {formatSuiAmount(event.current_amount)} /{" "}
+                  {formatSuiAmount(event.target_amount)} SUI
+                </p>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-5">
+                <div
+                  className="bg-gradient-to-r from-sky-500 to-indigo-600 h-5 rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <p className="text-gray-400 text-sm mt-1">
+                {progress.toFixed(1)}% funded
+              </p>
+            </div>
+
+            {/* Deskripsi */}
+            <div>
+              <h2 className="text-xl sm:text-2xl font-semibold mb-2">
+                Event Description
+              </h2>
+              <p className="text-gray-400 leading-relaxed break-words">
+                {event.description}
+              </p>
+            </div>
+
+            {/* Owner Controls */}
+            {isOwner && (
+              <div className="pt-4 border-t border-gray-800 space-y-4">
+                <h3 className="text-lg sm:text-xl font-semibold text-yellow-400">
+                  Campaign Owner Controls
+                </h3>
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
+                  <button
+                    onClick={() => setShowCloseModal(true)}
+                    disabled={!event.isOpen || isPending}
+                    className="w-full sm:w-auto px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPending ? "Processing..." : "Close Campaign"}
+                  </button>
+                  <button
+                    onClick={() => setShowWithdrawModal(true)}
+                    disabled={event.isOpen || isPending || hasWithdrawn}
+                    className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPending
+                      ? "Processing..."
+                      : hasWithdrawn
+                        ? "Already Withdrawn"
+                        : "Withdraw Funds"}
+                  </button>
+                </div>
+                <p
+                  className={`text-sm ${hasWithdrawn ? "text-green-400" : event.isOpen ? "text-yellow-300" : "text-red-700"}`}
+                >
+                  {hasWithdrawn
+                    ? "Funds have already been withdrawn from this campaign."
+                    : event.isOpen
+                      ? "Close the campaign first to enable withdrawals."
+                      : "Campaign is closed. You can now withdraw funds."}
+                </p>
+              </div>
+            )}
+
+            {/* Form Donasi */}
+            <div className="pt-4 space-y-4 w-full">
+              <h3 className="text-lg sm:text-xl font-semibold">
+                Contribute to this project
+              </h3>
+
+              {/* Jumlah Donasi */}
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">
+                  Amount (SUI)
+                </label>
+                <input
+                  type="number"
+                  placeholder="Enter amount in SUI..."
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  min="0"
+                  step="0.000000001"
+                  disabled={!event.isOpen || isPending}
+                  className="bg-gray-800 border border-gray-700 text-gray-200 px-3 py-2 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              {/* Tombol Contribute */}
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
+                <button
+                  onClick={handleContribute}
+                  disabled={!event.isOpen || isPending}
+                  className="w-full sm:w-auto px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-md font-medium transition-all shadow-md shadow-sky-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPending ? "Processing..." : "Contribute"}
+                </button>
+                <button
+                  onClick={() => router.back()}
+                  className="w-full sm:w-auto px-6 py-2 border border-gray-600 hover:border-blue-500 rounded-md font-medium transition-all text-gray-300 hover:text-blue-400"
+                >
+                  Back
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Confirmation modals */}
+        <ConfirmModal
+          isOpen={showCloseModal}
+          title="Close Campaign"
+          description="Are you sure you want to close this campaign? Closing will prevent further donations."
+          confirmText="Close"
+          cancelText="Cancel"
+          onConfirm={executeClose}
+          onCancel={() => setShowCloseModal(false)}
+          loading={isPending}
+        />
+
+        <ConfirmModal
+          isOpen={showWithdrawModal}
+          title="Withdraw Funds"
+          description="Withdraw all funds from this campaign to your account. This action cannot be undone."
+          confirmText="Withdraw"
+          cancelText="Cancel"
+          onConfirm={executeWithdraw}
+          onCancel={() => setShowWithdrawModal(false)}
+          loading={isPending}
+        />
       </div>
-
-      {/* Confirmation modals */}
-      <ConfirmModal
-        isOpen={showCloseModal}
-        title="Close Campaign"
-        description="Are you sure you want to close this campaign? Closing will prevent further donations."
-        confirmText="Close"
-        cancelText="Cancel"
-        onConfirm={executeClose}
-        onCancel={() => setShowCloseModal(false)}
-        loading={isPending}
-      />
-
-      <ConfirmModal
-        isOpen={showWithdrawModal}
-        title="Withdraw Funds"
-        description="Withdraw all funds from this campaign to your account. This action cannot be undone."
-        confirmText="Withdraw"
-        cancelText="Cancel"
-        onConfirm={executeWithdraw}
-        onCancel={() => setShowWithdrawModal(false)}
-        loading={isPending}
-      />
     </section>
   );
 }
