@@ -176,7 +176,7 @@ export default function EventPage() {
 
         {/* Empty state */}
         {filteredEvents?.length === 0 && (
-          <p className="text-center text-gray-500 mt-20">No events found 😢</p>
+          <p className="text-center text-white mt-20">No events found</p>
         )}
       </div>
     </section>
